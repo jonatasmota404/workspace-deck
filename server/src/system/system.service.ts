@@ -1,29 +1,52 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { ExecutionActionDto } from './dto/execute-action.dto';
+import { PlatformAdapter } from './adapters/platform.interface';
+import { LinuxAdapter } from './adapters/linux.adapter';
+import { RoutineStep } from './dto/routine.dto';
 
-const comandsArray: string[] = ['echo "Deck conectado com sucesso!"', 'uname -a'];
 const execPromisse = promisify(exec);
 
 @Injectable()
-export class SystemService {
+export class SystemService implements OnModuleInit {
     private readonly logger = new Logger(SystemService.name);
-    public async workspace_comands(comand:string): Promise<string> {
-        try {
-            const validComand = comandsArray.find(i => i === comand)
-            if (!validComand) {
-                throw new Error('Invalid comand');
-            }
+    private adapter!: PlatformAdapter;
 
-            const {stdout, stderr} = await execPromisse(comand);
+    onModuleInit() {
+        this.logger.log(`Detectando plataforma operacional: ${process.platform}`);
+        if (process.platform === 'linux') {
+            this.adapter = new LinuxAdapter();
+        } else {
+            throw new Error(`Plataforma não suportada: ${process.platform}`)
+        }
+    }
 
-            if (stderr) {
-                Logger.error(stderr)
+    private ResolveComands(step: RoutineStep){
+        switch (step.type) {
+            case 'OPEN_URL':
+                return this.adapter.openUrl(step.target);
+            case 'OPEN_PATH':
+                return this.adapter.openPath(step.target);
+            case 'LAUNCH_APP':
+                return this.adapter.launchApp(step.target, step.args);
+            case 'RUN_SHELL':
+                return this.adapter.runShell(step.target);
+            default:
+                throw new Error(`Tipo de ação não suportado: ${(step as any).type}`);
+        }
+    }
+
+    public async executeRoutine(steps: RoutineStep[]): Promise<void> {
+        for (const step of steps){
+            const command = this.ResolveComands(step);
+            this.logger.log(`Executando passo [${step.type}]: ${command}`);
+
+            try {
+                await execPromisse(command);
+            } catch (error: any) {
+                this.logger.error(`Falha no passo ${step.type}: ${error.message}`)
             }
-            return stdout;
-        } catch (error) {
-            this.logger.error(error)
-            throw new Error('Erro na execução do comando');
         }
     }
 }
