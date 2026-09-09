@@ -1,12 +1,15 @@
 import { MessageBody, OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage, WebSocketGateway } from '@nestjs/websockets';
 import { SystemService } from './system.service';
-import { Logger } from '@nestjs/common';
+import { Logger, UsePipes, ValidationPipe } from '@nestjs/common';
+import { ExecutionActionDto } from './dto/execute-action.dto';
+import { DeckRoutine, RoutineStep } from './dto/routine.dto';
+import { ConfigService } from './config.service';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class SystemGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(SystemGateway.name);
 
-  constructor(private readonly systemService: SystemService){}
+  constructor(private readonly systemService: SystemService, private readonly configService: ConfigService){}
 
   handleConnection(client: any, ...args: any[]) {
     this.logger.log(`Cliente conectado: ${client.id}`)
@@ -16,13 +19,31 @@ export class SystemGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.warn(`Cliente desconectado: ${client.id}`);
   }
 
-  @SubscribeMessage('execute_comand')
-  async comandExecution(@MessageBody() comand: string){
-    return await this.systemService.workspace_comands(comand)
+  @SubscribeMessage('deck:get_routines')
+  handleGetRoutines(): DeckRoutine[] {
+    return this.configService.getRoutines();
   }
 
-  @SubscribeMessage('message')
-  handleMessage(client: any, payload: any): string {
-    return 'Hello world!';
+  @SubscribeMessage('deck:trigger_routine')
+  async handleTriggerRoutine(@MessageBody() payload: {id: string}): Promise<{success:boolean; message:string}> {
+
+    const routine = this.configService.getRoutines().find(r => r.id === payload.id);
+
+    if (!routine) {
+      this.logger.error(`Rotina ${payload.id} não encontrada`);
+      return { success: false, message: 'Rotina não encontrada' };
+    }
+
+    this.logger.log(`Disparando rotina: ${routine.label}`);
+    await this.systemService.executeRoutine(routine.steps);
+
+    return { success: true, message: `Rotina ${routine.label} executada!` };
+  }
+
+  @UsePipes(new ValidationPipe())
+  @SubscribeMessage('execute_comand')
+  async comandExecution(@MessageBody() steps: RoutineStep[]): Promise<{status: string}>{
+    await this.systemService.executeRoutine(steps);
+    return {status:'ok'};
   }
 }
