@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import * as path from 'node:path';
-import { DeckRoutine } from "./dto/routine.dto";
+import { DeckRoutine, PrimitiveType } from "./dto/routine.dto";
 import { access, readFile, writeFile } from "node:fs/promises";
 
 @Injectable()
@@ -16,12 +16,12 @@ export class ConfigService implements OnModuleInit {
             {
                 id: 'btn_system_info',
                 label: 'Info do Sistema',
-                steps: [{ type: 'RUN_SHELL', target: 'uname -a' }],
+                steps: [{ type: PrimitiveType.RUN_SHELL, target: 'uname -a' }],
             },
             {
                 id: 'btn_github',
                 label: 'Abrir GitHub',
-                steps: [{ type: 'OPEN_URL', target: 'https://github.com' }],
+                steps: [{ type: PrimitiveType.OPEN_URL, target: 'https://github.com' }],
             },
         ];
         try {

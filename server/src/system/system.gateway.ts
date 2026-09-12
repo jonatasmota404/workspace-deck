@@ -2,14 +2,19 @@ import { MessageBody, OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage
 import { SystemService } from './system.service';
 import { Logger, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ExecutionActionDto } from './dto/execute-action.dto';
-import { DeckRoutine, RoutineStep } from './dto/routine.dto';
+import { DeckRoutine, DeckRoutineDto, RoutineStep } from './dto/routine.dto';
 import { ConfigService } from './config.service';
+import { AppsDiscoveryService } from './apps-discovery.service';
+import { AppInfo } from './interfaces/app-info.interface';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class SystemGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(SystemGateway.name);
 
-  constructor(private readonly systemService: SystemService, private readonly configService: ConfigService){}
+  constructor(private readonly systemService: SystemService, 
+    private readonly configService: ConfigService,
+    private readonly appsDiscoveryService: AppsDiscoveryService
+  ) {}
 
   handleConnection(client: any, ...args: any[]) {
     this.logger.log(`Cliente conectado: ${client.id}`)
@@ -25,7 +30,7 @@ export class SystemGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('deck:trigger_routine')
-  async handleTriggerRoutine(@MessageBody() payload: {id: string}): Promise<{success:boolean; message:string}> {
+  async handleTriggerRoutine(@MessageBody() payload: { id: string }): Promise<{ success: boolean; message: string }> {
 
     const routine = this.configService.getRoutines().find(r => r.id === payload.id);
 
@@ -42,8 +47,21 @@ export class SystemGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @UsePipes(new ValidationPipe())
   @SubscribeMessage('execute_comand')
-  async comandExecution(@MessageBody() steps: RoutineStep[]): Promise<{status: string}>{
+  async comandExecution(@MessageBody() steps: RoutineStep[]): Promise<{ status: string }> {
     await this.systemService.executeRoutine(steps);
-    return {status:'ok'};
+    return { status: 'ok' };
+  }
+
+  @UsePipes(new ValidationPipe())
+  @SubscribeMessage('deck:save_routine')
+  async handleSaveRoutine(@MessageBody() routineDto: DeckRoutineDto): Promise<{ success: boolean; message: string }> {
+    await this.configService.saveRoutine(routineDto);
+    this.logger.log(`Rotina salva com sucesso: ${routineDto.label}`);
+    return { success: true, message: `Rotina ${routineDto.label} salva!` };
+  }
+
+  @SubscribeMessage('deck:get_apps')
+  async handleGetApps(): Promise< AppInfo[]> {
+    return this.appsDiscoveryService.listInstalledApps();
   }
 }
